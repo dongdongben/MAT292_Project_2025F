@@ -11,12 +11,14 @@ The primary script is **`new_fit4.py`**, other fit.py are older versions of the 
 Let **\(N(t)\)** be Steam users. Time is measured in **months**.
 
 The fitted ODE is:
+$$
 \[
 \frac{dN}{dt}
 = \left[p(t) + q(t)\frac{N(t)}{K(t)}\right]\,N(t)\left(1-\frac{N(t)}{K(t)}\right).
 \]
-
+$$
 The coefficient functions are **linear in normalized drivers**:
+$$
 \[
 \begin{aligned}
 p(t) &= p_0 + a_1\,\mathrm{CPI}(t) + a_2\,\mathrm{PPI}(t),\\
@@ -24,15 +26,17 @@ q(t) &= q_0 + b_1\,\mathrm{Twitch}(t),\\
 K(t) &= k_1\,\mathrm{Population}(t) + k_2\,\mathrm{Internet}(t).
 \end{aligned}
 \]
-
+$$
 Fitted Parameters:  
 `[p0, a1, a2, q0, b1, k1, k2]`
 
 ### optimization
 The fitter chooses the parameter vector to minimize the **sum of squared errors** between the simulated curve and observed Steam users over the period:
+$$
 \[
 \min_{\theta}\ \sum_{t}( \hat N_{\theta}(t) - N_{\text{obs}}(t) )^2.
 \]
+$$
 Implementation detail: the residual is `sim - y_obs` and the optimizer minimizes its 2-norm squared.
 
 ---
@@ -243,9 +247,10 @@ This section documents the main functions in `new_fit4.py` in a consistent “ro
 - `np.ndarray` of length `t_len`: simulated \(N(t)\) evaluated at integer months.
 
 **Model**
+$$
 \[
 \frac{dN}{dt}=\left(p(t)+q(t)\frac{N}{K(t)}\right)\,N\left(1-\frac{N}{K(t)}\right)
-\]
+\]$$
 
 **Algorithm / Implementation Notes**
 - Uses `scipy.integrate.solve_ivp` with `method="RK45"`.
@@ -297,9 +302,9 @@ This section documents the main functions in `new_fit4.py` in a consistent “ro
   - `result`: SciPy optimizer result from the local refinement step
 
 **Objective**
-\[
+$$\[
 \min_{\theta}\ \sum_{t=0}^{T-1}\left(N_{\text{sim}}(t;\theta)-N_{\text{obs}}(t)\right)^2
-\]
+\]$$
 
 **Algorithm / Implementation Notes**
 - Uses a two-stage approach:
