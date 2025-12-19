@@ -64,7 +64,7 @@ Recommended: Python 3.10+
 Install dependencies:
 ```bash
 pip install numpy pandas scipy matplotlib scikit-learn python-dateutil
-
+```
 
 ## 4) Running the program
 
