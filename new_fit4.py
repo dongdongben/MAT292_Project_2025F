@@ -27,7 +27,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTDIR = os.path.join(BASE_DIR, "output_results")
 os.makedirs(OUTDIR, exist_ok=True)
 
-# CSV names (must exist in same folder or change these paths)
+# CSV names (must exist in same folder)
 FILES = {
     "population": os.path.join(BASE_DIR, "world_population_04_01.csv"),
     "internet": os.path.join(BASE_DIR, "internet_penetration_04_01.csv"),
@@ -37,24 +37,21 @@ FILES = {
     "ppi": os.path.join(BASE_DIR, "tech_ppi_04_01.csv")
 }
 
-# Path to the example fire report you uploaded (for your report reference)
-REPORT_PDF_PATH = "/mnt/data/Example Project Report - A Mathematical Fire Spread Model.pdf"
 
-# Extend horizon (year) for scenario projections
+# Extend year for scenario projections
 FIT_END_YEAR = 2025
 EXTEND_TO_YEAR = 2030
 
 # How many months of history to use when fitting local trend for extrapolation
-FIT_WINDOW_MONTHS = 60  # last 3 years trend for extrapolation
+FIT_WINDOW_MONTHS = 60  # here we use last 3 years trend for extrapolation
 
-# Initial guess / bounds for parameters for fitting (p0,a1,a2,q0,b1,k1,k2)
+# Initial guess / bounds for parameters p0,a1,a2,q0,b1,k1,k2 for fitting
 PARAM_BOUNDS = {
     "lower": [1e-4, 0.0, 0.0, 1e-4, 0.0, 0.0, 0.0],
     "upper": [1.0, 20.0, 20.0, 2.0, 10.0, 50.0, 10]
 }
 
 # -----------------------------------------------------
-
 
 
 def load_monthly_csv(filepath, col_name_hint):
@@ -67,7 +64,7 @@ def load_monthly_csv(filepath, col_name_hint):
     val_col = val_cols[0]
     df = df[[date_col, val_col]].rename(columns={date_col: "date", val_col: col_name_hint})
 
-    # --- FIX: CLEAN DATE STRINGS ---
+    # --- CLEAN DATE STRINGS ---
     df["date"] = (
         df["date"]
         .astype(str)
@@ -92,7 +89,7 @@ def load_monthly_csv(filepath, col_name_hint):
 def create_master_timeline(dfs):
     start = min(df["date"].min() for df in dfs.values())
     end   = max(df["date"].max() for df in dfs.values())
-    # but we'll extend to EXTEND_TO_YEAR
+    # extend to EXTEND_TO_YEAR
     end_extended = datetime(EXTEND_TO_YEAR, 12, 1) #DEV, end vs end_extended
     dates = pd.date_range(start=start, end=end_extended, freq="MS")  # month starts
     return pd.DataFrame({"date": dates})
@@ -101,7 +98,7 @@ def create_master_timeline(dfs):
 
 def merge_and_fill(master, df, col, fill_strategy="zero_before"):
     merged = master.merge(df, on="date", how="left")
-    # linear interpolate internal missing values
+    # linear interpolation used for internal missing values
     merged[col] = merged[col].interpolate(method='linear', limit_direction='backward')
     # handle months before earliest available depending on strategy
     if df["date"].min() > merged["date"].min():
@@ -129,12 +126,12 @@ def extrapolate_driver(series, months_out, method):
         return extrapolate_future(series, months_out, "exp")
 
     if method == "logistic":
-        # Simple capped growth
+        # Capping growth
         K = series.max() * 1.1
         t = np.arange(len(series))
         y = series.values
 
-        # Guard against invalid values
+        # prevent invalid values
         if np.any(y <= 0):
             return extrapolate_future(series, months_out, "linear")
 
@@ -162,13 +159,13 @@ def extrapolate_future(series, months_out, method, fit_window=FIT_WINDOW_MONTHS)
     series: pandas Series indexed by datetime (monthly) with no NaNs
     months_out: number of months to extend beyond last index
     """
-    # Ensure index is datetime and monotonic
+    # Ensure index is datetime
     series = series.copy()
     series.index = pd.to_datetime(series.index)
     series = series.sort_index()
     n = len(series)
     if n == 0:
-        # nothing to extrapolate - return zeros for months_out
+        # if there is nothing to extrapolate - return zeros for months_out
         future_index = pd.date_range(start=series.index[-1] + relativedelta(months=1), periods=months_out, freq='MS') if n>0 else []
         return pd.Series([], index=series.index).append(pd.Series([0.0]*months_out, index=future_index))
 
@@ -190,8 +187,8 @@ def extrapolate_future(series, months_out, method, fit_window=FIT_WINDOW_MONTHS)
             future_index = pd.date_range(start=series.index[-1] + relativedelta(months=1), periods=months_out, freq='MS')
             ext = pd.Series(y_future, index=future_index)
             return pd.concat([series, ext])
-        # else fallback to linear
-    # linear fallback
+        # if exponential does not work, fallback to linear
+    # linear
     lr = LinearRegression()
     lr.fit(t_fit, y_fit)
     future_t = np.arange(n, n+months_out).reshape(-1,1)
@@ -230,8 +227,6 @@ def build_future_parameters(fitted_params, hist_df, future_df):
 def simulate_hybrid(p_t, q_t, K_t, N0, t_len):
     """
     Simulate the hybrid ODE over t_len monthly steps.
-    Always returns a numpy array of shape (t_len,) even if the solver fails
-    (on failure returns a large penalty array).
     """
     def rhs(t, N):
         idx = int(np.clip(np.floor(t), 0, t_len-1))
@@ -256,16 +251,16 @@ def simulate_hybrid(p_t, q_t, K_t, N0, t_len):
             max_step=1.0,
             rtol=1e-3, #DEV, -6
             atol=1e-5, #-8
-            method="RK45"
+            method="RK45"   #Using RK45 method
         )
     except Exception as e:
-        # If solver crashes, return large penalty array
+        # If solver crashes, return large array
         warnings.warn(f"ODE solver exception: {e}; returning penalty array.")
         return np.ones(t_len) * 1e12
 
     # Validate solution shape and status
     if sol.status < 0 or sol.y.shape[1] != t_len:
-        # solver failed or returned fewer points; return large penalty to reject these params
+        # solver failed or returned fewer points; return large array to reject these params
         warnings.warn("ODE solver did not return expected number of points; returning penalty array.")
         return np.ones(t_len) * 1e12
 
@@ -274,7 +269,7 @@ def simulate_hybrid(p_t, q_t, K_t, N0, t_len):
 
 
 
-# Objective residual function for least-squares
+# Residual function for least-squares
 def residuals_for_params(x, drivers, y_obs, N0):
     # x: [p0, a1, a2, q0, b1, k1, k2]
     p0, a1, a2, q0, b1, k1, k2 = x
@@ -288,11 +283,10 @@ def residuals_for_params(x, drivers, y_obs, N0):
     q_t = q0 + b1 * twitch
     K_t = k1 * pop + k2 * internet
 
-    p_t = np.maximum(p_t, 1e-9) #added
+    p_t = np.maximum(p_t, 1e-9)
     q_t = np.maximum(q_t, 0.0)
     K_t = np.maximum(K_t, np.max(y_obs)*1.05)  # ensure K at least slightly above observed max
 
-    # safeguard K_t
     # if K_t.max() > 1e8 or K_t.max() < 1.2*np.max(y_obs):
     #     return np.ones_like(y_obs) * 1e6
     if np.any(np.isnan(K_t)) or np.any(np.isinf(K_t)) or np.any(K_t <= 0):
@@ -308,7 +302,7 @@ def residuals_for_params(x, drivers, y_obs, N0):
 
 # Auto-fitting combining global and local
 def fit_parameters_auto(drivers, y_obs, N0):
-    # Build bounds list of (low, high) pairs required by differential_evolution
+    # Build bounds list of (low, high) pairs required
     lb = PARAM_BOUNDS["lower"]
     ub = PARAM_BOUNDS["upper"]
     if len(lb) != len(ub):
@@ -325,39 +319,11 @@ def fit_parameters_auto(drivers, y_obs, N0):
 
     print("Starting global optimization (differential_evolution)...")
 
-    # For generating random seeds only
-    # x0 = None
-    # best_loss = np.inf
-    # for i in range(5):
-    #     print(i)
-    #     de = differential_evolution(loss, bounds=bounds, maxiter=8, popsize=4, workers=1, polish=False) #DEV
-    #     if de.fun < best_loss:
-    #         x0 = de.x
-    #         best_loss = de.fun
-
-    # For generating and outputting best seed
-    # seeds = np.random.randint(0, 10_000_000, size=5)
-    # results = []
-    # for seed in seeds:
-    #     res = differential_evolution(loss, bounds=bounds, maxiter=8, popsize=4, workers=1, polish=False) #DEV
-    #     results.append((seed, res.fun, res.x))
-    # best = min(results, key=lambda r: r[1])
-    # print(f"Best seed: {best[0]}")
-    # x0 = best[2]
-
     de = differential_evolution(loss, bounds=bounds, maxiter=8, popsize=4, workers=1, polish=False, seed=4415216) #DEV
     x0 = de.x
     print("Global opt finished.")
 
-    # try: #40, 8 
-    #     de = differential_evolution(loss, bounds=bounds, maxiter=8, popsize=4, workers=1, polish=False) #DEV
-    #     x0 = de.x
-    #     print("Global opt finished.")
-    # except Exception as e:
-    #     warnings.warn(f"differential_evolution failed: {e}; falling back to random initial guess for local search.")
-    #     # fallback: use midpoint of bounds as starting guess
-    #     x0 = np.array([(b[0] + b[1]) / 2.0 for b in bounds], dtype=float)
-
+ 
     # Now run local refinement using least_squares; must pass bounds in appropriate form
     lb_arr = np.array([b[0] for b in bounds], dtype=float)
     ub_arr = np.array([b[1] for b in bounds], dtype=float)
@@ -404,11 +370,6 @@ def run_future_scenarios(
         }).to_csv(os.path.join(OUTDIR, f"scenario_{name}.csv"), index=False)
     return results
 
-
-
-
-
-
 # mapping param names to indices in parameter vector
 param_index = {"p0":0, "a1":1, "a2":2, "q0":3, "b1":4, "k1":5, "k2":6}
 param_names = ["p0","a1","a2","q0","b1","k1","k2"]
@@ -442,7 +403,7 @@ if __name__ == "__main__":
     
 
 
-    # 3) Normalization (for drivers) -- robust numeric conversion
+    # 3) Normalization (for drivers) -- numeric conversion
     for col in ["population", "internet", "twitch", "steam", "cpi", "ppi"]:
         merged[col] = pd.to_numeric(merged[col], errors="coerce")
     # Fill remaining NaNs sensibly (interpolate then back/forward-fill)
@@ -592,4 +553,5 @@ if __name__ == "__main__":
 
     # Done
     print("All outputs written to", OUTDIR)
-    print("Reference example report path (for your writeup):", REPORT_PDF_PATH)
+    
+    #print("Reference example report path (for your writeup):", REPORT_PDF_PATH)
