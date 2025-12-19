@@ -12,20 +12,16 @@ Let **\(N(t)\)** be Steam users. Time is measured in **months**.
 
 The fitted ODE is:
 $$
-\[
 \frac{dN}{dt}
 = \left[p(t) + q(t)\frac{N(t)}{K(t)}\right]\,N(t)\left(1-\frac{N(t)}{K(t)}\right).
-\]
 $$
 The coefficient functions are **linear in normalized drivers**:
 $$
-\[
 \begin{aligned}
 p(t) &= p_0 + a_1\,\mathrm{CPI}(t) + a_2\,\mathrm{PPI}(t),\\
 q(t) &= q_0 + b_1\,\mathrm{Twitch}(t),\\
 K(t) &= k_1\,\mathrm{Population}(t) + k_2\,\mathrm{Internet}(t).
 \end{aligned}
-\]
 $$
 Fitted Parameters:  
 `[p0, a1, a2, q0, b1, k1, k2]`
